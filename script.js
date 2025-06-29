@@ -1,336 +1,396 @@
-// 투두리스트 애플리케이션
-class TodoApp {
-    constructor() {
-        this.todos = [];
-        this.currentDate = new Date();
-        this.currentMonth = this.currentDate.getMonth();
-        this.currentYear = this.currentDate.getFullYear();
-        this.editingTodoId = null;
-        
-        this.init();
+// DOM 요소들
+const apiKeyInput = document.getElementById('apiKey');
+const officeCodeInput = document.getElementById('officeCode');
+const schoolCodeInput = document.getElementById('schoolCode');
+const mealDateInput = document.getElementById('mealDate');
+const saveApiKeyBtn = document.getElementById('saveApiKey');
+const searchMealBtn = document.getElementById('searchMeal');
+const todayMealBtn = document.getElementById('todayMeal');
+const loadingElement = document.getElementById('loading');
+const mealContentElement = document.getElementById('mealContent');
+
+// 로컬스토리지 키
+const STORAGE_KEYS = {
+    API_KEY: 'gangwon_meal_api_key',
+    OFFICE_CODE: 'gangwon_meal_office_code',
+    SCHOOL_CODE: 'gangwon_meal_school_code'
+};
+
+// 페이지 로드 시 저장된 데이터 불러오기
+document.addEventListener('DOMContentLoaded', function() {
+    loadSavedData();
+    setupEventListeners();
+    setDefaultDate();
+});
+
+// 기본 날짜 설정 (오늘 날짜)
+function setDefaultDate() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+    
+    mealDateInput.value = todayStr;
+}
+
+// 저장된 데이터 불러오기
+function loadSavedData() {
+    const savedApiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+    const savedOfficeCode = localStorage.getItem(STORAGE_KEYS.OFFICE_CODE);
+    const savedSchoolCode = localStorage.getItem(STORAGE_KEYS.SCHOOL_CODE);
+    
+    if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
     }
-
-    init() {
-        this.loadTodos();
-        this.setupEventListeners();
-        this.renderTodoList();
-        this.renderCalendar();
-        this.setDefaultDate();
+    
+    if (savedOfficeCode) {
+        officeCodeInput.value = savedOfficeCode;
     }
-
-    // 한국 시간 기준으로 오늘 날짜를 YYYY-MM-DD 형식으로 반환
-    getTodayDate() {
-        const now = new Date();
-        const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
-        return koreaTime.toISOString().split('T')[0];
-    }
-
-    // 한국 시간 기준으로 날짜를 YYYY-MM-DD 형식으로 변환
-    formatDateToYYYYMMDD(date) {
-        const koreaTime = new Date(date.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
-        return koreaTime.toISOString().split('T')[0];
-    }
-
-    // 이벤트 리스너 설정
-    setupEventListeners() {
-        // 할 일 추가
-        document.getElementById('addTodoBtn').addEventListener('click', () => this.addTodo());
-        document.getElementById('todoInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.addTodo();
-        });
-
-        // 뷰 전환
-        document.getElementById('listViewBtn').addEventListener('click', () => this.switchView('list'));
-        document.getElementById('calendarViewBtn').addEventListener('click', () => this.switchView('calendar'));
-
-        // 달력 네비게이션
-        document.getElementById('prevMonth').addEventListener('click', () => this.changeMonth(-1));
-        document.getElementById('nextMonth').addEventListener('click', () => this.changeMonth(1));
-
-        // 모달 이벤트
-        document.querySelector('.close').addEventListener('click', () => this.closeModal());
-        document.getElementById('saveEditBtn').addEventListener('click', () => this.saveEdit());
-        document.getElementById('cancelEditBtn').addEventListener('click', () => this.closeModal());
-        
-        // 모달 외부 클릭 시 닫기
-        window.addEventListener('click', (e) => {
-            if (e.target === document.getElementById('editModal')) {
-                this.closeModal();
-            }
-        });
-    }
-
-    // 기본 날짜 설정 (오늘 날짜)
-    setDefaultDate() {
-        const today = this.getTodayDate();
-        document.getElementById('todoDate').value = today;
-    }
-
-    // 할 일 추가
-    addTodo() {
-        const input = document.getElementById('todoInput');
-        const dateInput = document.getElementById('todoDate');
-        
-        const text = input.value.trim();
-        const date = dateInput.value;
-
-        if (!text) {
-            alert('할 일을 입력해주세요!');
-            return;
-        }
-
-        if (!date) {
-            alert('날짜를 선택해주세요!');
-            return;
-        }
-
-        const todo = {
-            id: Date.now(),
-            text: text,
-            date: date,
-            completed: false,
-            createdAt: new Date().toISOString()
-        };
-
-        this.todos.push(todo);
-        this.saveTodos();
-        this.renderTodoList();
-        this.renderCalendar();
-
-        input.value = '';
-        input.focus();
-    }
-
-    // 할 일 삭제
-    deleteTodo(id) {
-        if (confirm('정말로 이 할 일을 삭제하시겠습니까?')) {
-            this.todos = this.todos.filter(todo => todo.id !== id);
-            this.saveTodos();
-            this.renderTodoList();
-            this.renderCalendar();
-        }
-    }
-
-    // 할 일 완료/미완료 토글
-    toggleTodo(id) {
-        const todo = this.todos.find(todo => todo.id === id);
-        if (todo) {
-            todo.completed = !todo.completed;
-            this.saveTodos();
-            this.renderTodoList();
-            this.renderCalendar();
-        }
-    }
-
-    // 할 일 수정 모달 열기
-    editTodo(id) {
-        const todo = this.todos.find(todo => todo.id === id);
-        if (todo) {
-            this.editingTodoId = id;
-            document.getElementById('editTodoInput').value = todo.text;
-            document.getElementById('editTodoDate').value = todo.date;
-            document.getElementById('editModal').style.display = 'block';
-        }
-    }
-
-    // 할 일 수정 저장
-    saveEdit() {
-        const text = document.getElementById('editTodoInput').value.trim();
-        const date = document.getElementById('editTodoDate').value;
-
-        if (!text) {
-            alert('할 일을 입력해주세요!');
-            return;
-        }
-
-        if (!date) {
-            alert('날짜를 선택해주세요!');
-            return;
-        }
-
-        const todo = this.todos.find(todo => todo.id === this.editingTodoId);
-        if (todo) {
-            todo.text = text;
-            todo.date = date;
-            this.saveTodos();
-            this.renderTodoList();
-            this.renderCalendar();
-        }
-
-        this.closeModal();
-    }
-
-    // 모달 닫기
-    closeModal() {
-        document.getElementById('editModal').style.display = 'none';
-        this.editingTodoId = null;
-    }
-
-    // 뷰 전환
-    switchView(view) {
-        const listView = document.getElementById('listView');
-        const calendarView = document.getElementById('calendarView');
-        const listBtn = document.getElementById('listViewBtn');
-        const calendarBtn = document.getElementById('calendarViewBtn');
-
-        if (view === 'list') {
-            listView.classList.add('active');
-            calendarView.classList.remove('active');
-            listBtn.classList.add('active');
-            calendarBtn.classList.remove('active');
-        } else {
-            calendarView.classList.add('active');
-            listView.classList.remove('active');
-            calendarBtn.classList.add('active');
-            listBtn.classList.remove('active');
-        }
-    }
-
-    // 달력 월 변경
-    changeMonth(delta) {
-        this.currentMonth += delta;
-        
-        if (this.currentMonth > 11) {
-            this.currentMonth = 0;
-            this.currentYear++;
-        } else if (this.currentMonth < 0) {
-            this.currentMonth = 11;
-            this.currentYear--;
-        }
-        
-        this.renderCalendar();
-    }
-
-    // 할 일 목록 렌더링
-    renderTodoList() {
-        const todoList = document.getElementById('todoList');
-        
-        if (this.todos.length === 0) {
-            todoList.innerHTML = '<p style="text-align: center; color: #636e72; font-style: italic;">할 일이 없습니다. 새로운 할 일을 추가해보세요!</p>';
-            return;
-        }
-
-        // 날짜별로 정렬
-        const sortedTodos = [...this.todos].sort((a, b) => {
-            if (a.date === b.date) {
-                return new Date(a.createdAt) - new Date(b.createdAt);
-            }
-            return a.date.localeCompare(b.date);
-        });
-
-        todoList.innerHTML = sortedTodos.map(todo => `
-            <div class="todo-item ${todo.completed ? 'completed' : ''}" data-id="${todo.id}">
-                <div class="todo-content">
-                    <div class="todo-text">${this.escapeHtml(todo.text)}</div>
-                    <div class="todo-date">${this.formatDate(todo.date)}</div>
-                </div>
-                <div class="todo-actions">
-                    <button class="complete-btn" onclick="todoApp.toggleTodo(${todo.id})" title="${todo.completed ? '완료 취소' : '완료'}">
-                        ${todo.completed ? '↩️' : '✅'}
-                    </button>
-                    <button class="edit-btn" onclick="todoApp.editTodo(${todo.id})" title="수정">
-                        ✏️
-                    </button>
-                    <button class="delete-btn" onclick="todoApp.deleteTodo(${todo.id})" title="삭제">
-                        🗑️
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // 달력 렌더링
-    renderCalendar() {
-        const calendarDays = document.getElementById('calendarDays');
-        const currentMonthElement = document.getElementById('currentMonth');
-        
-        // 현재 월 표시
-        const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', 
-                           '7월', '8월', '9월', '10월', '11월', '12월'];
-        currentMonthElement.textContent = `${this.currentYear}년 ${monthNames[this.currentMonth]}`;
-
-        // 달력 생성
-        const firstDay = new Date(this.currentYear, this.currentMonth, 1);
-        const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
-        const startDate = new Date(firstDay);
-        startDate.setDate(startDate.getDate() - firstDay.getDay());
-
-        let calendarHTML = '';
-        const today = this.getTodayDate();
-
-        for (let i = 0; i < 42; i++) {
-            const currentDate = new Date(startDate);
-            currentDate.setDate(startDate.getDate() + i);
-            
-            const dateString = this.formatDateToYYYYMMDD(currentDate);
-            const dayNumber = currentDate.getDate();
-            const isOtherMonth = currentDate.getMonth() !== this.currentMonth;
-            const isToday = dateString === today;
-            
-            // 해당 날짜의 할 일들 가져오기
-            const dayTodos = this.todos.filter(todo => todo.date === dateString);
-            
-            calendarHTML += `
-                <div class="calendar-day ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}" 
-                     data-date="${dateString}">
-                    <div class="calendar-day-number">${dayNumber}</div>
-                    <div class="calendar-day-todos">
-                        ${dayTodos.map(todo => `
-                            <div class="calendar-day-todo ${todo.completed ? 'completed' : ''}" title="${this.escapeHtml(todo.text)}">
-                                <span>${this.escapeHtml(todo.text)}</span>
-                                <button class="calendar-delete-btn" title="삭제" onclick="todoApp.deleteTodo(${todo.id})">×</button>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        calendarDays.innerHTML = calendarHTML;
-    }
-
-    // 날짜 포맷팅
-    formatDate(dateString) {
-        const date = new Date(dateString);
-        const today = this.getTodayDate();
-        
-        // 내일 날짜 계산 (한국 시간 기준)
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowString = this.formatDateToYYYYMMDD(tomorrow);
-        
-        if (dateString === today) {
-            return '오늘';
-        } else if (dateString === tomorrowString) {
-            return '내일';
-        } else {
-            return `${date.getMonth() + 1}월 ${date.getDate()}일`;
-        }
-    }
-
-    // HTML 이스케이프
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // 로컬스토리지에 저장
-    saveTodos() {
-        localStorage.setItem('todos', JSON.stringify(this.todos));
-    }
-
-    // 로컬스토리지에서 로드
-    loadTodos() {
-        const saved = localStorage.getItem('todos');
-        if (saved) {
-            this.todos = JSON.parse(saved);
-        }
+    
+    if (savedSchoolCode) {
+        schoolCodeInput.value = savedSchoolCode;
     }
 }
 
-// 애플리케이션 초기화
-let todoApp;
-document.addEventListener('DOMContentLoaded', () => {
-    todoApp = new TodoApp();
-}); 
+// 이벤트 리스너 설정
+function setupEventListeners() {
+    saveApiKeyBtn.addEventListener('click', saveApiKey);
+    searchMealBtn.addEventListener('click', searchMeal);
+    todayMealBtn.addEventListener('click', searchTodayMeal);
+    
+    // Enter 키로도 검색 가능하도록
+    schoolCodeInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchMeal();
+        }
+    });
+    
+    apiKeyInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            saveApiKey();
+        }
+    });
+    
+    officeCodeInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchMeal();
+        }
+    });
+    
+    mealDateInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchMeal();
+        }
+    });
+}
+
+// API 키 저장
+function saveApiKey() {
+    const apiKey = apiKeyInput.value.trim();
+    
+    if (!apiKey) {
+        showMessage('API 키를 입력해주세요.', 'error');
+        return;
+    }
+    
+    localStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
+    showMessage('API 키가 성공적으로 저장되었습니다!', 'success');
+}
+
+// 오늘 급식 조회
+function searchTodayMeal() {
+    setDefaultDate();
+    searchMeal();
+}
+
+// 급식 정보 검색
+async function searchMeal() {
+    const apiKey = apiKeyInput.value.trim();
+    const officeCode = officeCodeInput.value.trim();
+    const schoolCode = schoolCodeInput.value.trim();
+    const mealDate = mealDateInput.value;
+    
+    if (!apiKey) {
+        showMessage('API 키를 입력해주세요.', 'error');
+        return;
+    }
+    
+    if (!officeCode) {
+        showMessage('교육청 코드를 입력해주세요.', 'error');
+        return;
+    }
+    
+    if (!schoolCode) {
+        showMessage('학교 번호를 입력해주세요.', 'error');
+        return;
+    }
+    
+    if (!mealDate) {
+        showMessage('조회 날짜를 선택해주세요.', 'error');
+        return;
+    }
+    
+    // 교육청 코드와 학교 번호 저장
+    localStorage.setItem(STORAGE_KEYS.OFFICE_CODE, officeCode);
+    localStorage.setItem(STORAGE_KEYS.SCHOOL_CODE, schoolCode);
+    
+    showLoading(true);
+    
+    try {
+        // 선택된 날짜를 YYYYMMDD 형식으로 변환
+        const selectedDate = new Date(mealDate);
+        const year = selectedDate.getFullYear();
+        const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(selectedDate.getDate()).padStart(2, '0');
+        const dateStr = `${year}${month}${day}`;
+        
+        // 나이스 교육정보 개방 포털 API URL
+        const apiUrl = `https://open.neis.go.kr/hub/mealServiceDietInfo`;
+        
+        const params = new URLSearchParams({
+            KEY: apiKey,
+            Type: 'json',
+            ATPT_OFCDC_SC_CODE: officeCode, // 사용자가 입력한 교육청 코드
+            SD_SCHUL_CODE: schoolCode,
+            MLSV_YMD: dateStr
+        });
+        
+        const response = await fetch(`${apiUrl}?${params}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.RESULT && data.RESULT.CODE === 'INFO-200') {
+            // 급식 정보가 없는 경우
+            const formattedDate = formatDisplayDate(mealDate);
+            showMealInfo([], `${formattedDate}에는 급식 정보가 없습니다.`);
+        } else if (data.mealServiceDietInfo && data.mealServiceDietInfo[1]) {
+            // 급식 정보가 있는 경우
+            const mealData = data.mealServiceDietInfo[1].row;
+            showMealInfo(mealData, null);
+        } else {
+            showMessage('급식 정보를 불러올 수 없습니다. API 키, 교육청 코드, 학교 번호를 확인해주세요.', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error fetching meal data:', error);
+        showMessage('급식 정보를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 로딩 상태 표시
+function showLoading(show) {
+    if (show) {
+        loadingElement.style.display = 'flex';
+        mealContentElement.style.display = 'none';
+    } else {
+        loadingElement.style.display = 'none';
+        mealContentElement.style.display = 'block';
+    }
+}
+
+// 급식 정보 표시
+function showMealInfo(mealData, noDataMessage) {
+    const mealContent = document.getElementById('mealContent');
+    
+    if (noDataMessage) {
+        mealContent.innerHTML = `<p class="placeholder-text">${noDataMessage}</p>`;
+        return;
+    }
+    
+    if (!mealData || mealData.length === 0) {
+        const selectedDate = formatDisplayDate(mealDateInput.value);
+        mealContent.innerHTML = `<p class="placeholder-text">${selectedDate}에는 급식 정보가 없습니다.</p>`;
+        return;
+    }
+    
+    // 날짜별로 급식을 그룹화
+    const mealsByDate = {};
+    
+    mealData.forEach(meal => {
+        const date = meal.MLSV_YMD;
+        const formattedDate = `${date.substring(0, 4)}년 ${date.substring(4, 6)}월 ${date.substring(6, 8)}일`;
+        
+        if (!mealsByDate[formattedDate]) {
+            mealsByDate[formattedDate] = {
+                '조식': [],
+                '중식': [],
+                '석식': []
+            };
+        }
+        
+        const mealType = getMealType(meal.MMEAL_SC_CODE);
+        if (mealType) {
+            mealsByDate[formattedDate][mealType].push(meal);
+        }
+    });
+    
+    let html = '<div class="meal-container">';
+    
+    // 각 날짜별로 표시
+    Object.keys(mealsByDate).forEach(date => {
+        const meals = mealsByDate[date];
+        html += `<div class="meal-date-section">`;
+        html += `<h3 class="meal-date-title">${date}</h3>`;
+        
+        // 조식, 중식, 석식 순서로 표시
+        ['조식', '중식', '석식'].forEach(mealType => {
+            const mealList = meals[mealType];
+            if (mealList.length > 0) {
+                html += `<div class="meal-type-item">`;
+                html += `<h4 class="meal-type-label">${mealType}</h4>`;
+                html += `<div class="meal-menu-content">`;
+                
+                mealList.forEach(meal => {
+                    // 급식 메뉴 정리 (알레르기 정보 완전 제거)
+                    let menu = meal.DDISH_NM || '메뉴 정보 없음';
+                    
+                    // 알레르기 정보 완전 제거 (괄호 안의 모든 내용, 느낌표, 숫자 등)
+                    menu = cleanMenuText(menu);
+                    
+                    // 메뉴를 개별 메뉴로 분리
+                    const menuItems = splitMenuItems(menu);
+                    
+                    html += `<div class="meal-menu-list">`;
+                    menuItems.forEach(item => {
+                        const cleanItem = cleanMenuText(item);
+                        if (cleanItem.trim()) {
+                            html += `<div class="meal-menu-item">• ${cleanItem.trim()}</div>`;
+                        }
+                    });
+                    html += `</div>`;
+                });
+                
+                html += `</div>`;
+                html += `</div>`;
+            }
+        });
+        
+        html += `</div>`;
+    });
+    
+    html += '</div>';
+    mealContent.innerHTML = html;
+}
+
+// 메뉴를 개별 메뉴로 분리
+function splitMenuItems(menuText) {
+    if (!menuText) return [];
+    
+    // HTML 태그 제거
+    let cleaned = menuText.replace(/<[^>]*>/g, '');
+    
+    // 줄바꿈으로 먼저 분리
+    let items = cleaned.split(/<br\s*\/?>/i);
+    
+    // 각 아이템을 공백으로 추가 분리
+    let finalItems = [];
+    items.forEach(item => {
+        if (item.trim()) {
+            // 공백으로 구분된 메뉴들을 개별 메뉴로 분리
+            const subItems = item.trim().split(/\s+/);
+            subItems.forEach(subItem => {
+                if (subItem.trim()) {
+                    finalItems.push(subItem.trim());
+                }
+            });
+        }
+    });
+    
+    return finalItems;
+}
+
+// 메뉴 텍스트 정리 (알레르기 정보 완전 제거)
+function cleanMenuText(text) {
+    if (!text) return '';
+    
+    // 괄호 안의 모든 내용 제거 (알레르기 정보)
+    let cleaned = text.replace(/\([^)]*\)/g, '');
+    
+    // 느낌표와 숫자 제거
+    cleaned = cleaned.replace(/[!0-9]/g, '');
+    
+    // HTML 태그 제거
+    cleaned = cleaned.replace(/<[^>]*>/g, '');
+    
+    // 연속된 공백을 하나로 치환
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    
+    // 앞뒤 공백 제거
+    cleaned = cleaned.trim();
+    
+    return cleaned;
+}
+
+// 급식 타입 코드를 한글로 변환
+function getMealType(mealCode) {
+    const mealTypes = {
+        '1': '조식',
+        '2': '중식',
+        '3': '석식'
+    };
+    return mealTypes[mealCode] || null;
+}
+
+// 메시지 표시
+function showMessage(message, type) {
+    // 기존 메시지 제거
+    const existingMessage = document.querySelector('.message');
+    if (existingMessage) {
+        existingMessage.remove();
+    }
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${type}-message`;
+    messageElement.textContent = message;
+    
+    // 메시지를 적절한 위치에 삽입
+    const settingsSection = document.querySelector('.settings-section .card');
+    settingsSection.appendChild(messageElement);
+    
+    // 3초 후 메시지 자동 제거
+    setTimeout(() => {
+        if (messageElement.parentNode) {
+            messageElement.remove();
+        }
+    }, 3000);
+}
+
+// 날짜 포맷팅 (YYYY-MM-DD → YYYY년 MM월 DD일)
+function formatDisplayDate(dateString) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    return `${year}년 ${month}월 ${day}일`;
+}
+
+// 유틸리티 함수: 날짜 포맷팅
+function formatDate(dateString) {
+    const year = dateString.substring(0, 4);
+    const month = dateString.substring(4, 6);
+    const day = dateString.substring(6, 8);
+    return `${year}년 ${month}월 ${day}일`;
+}
+
+// 유틸리티 함수: 메뉴 정리
+function cleanMenu(menuString) {
+    if (!menuString) return '메뉴 정보 없음';
+    
+    // 알레르기 정보 제거
+    let cleaned = menuString.replace(/\([^)]*\)/g, '').trim();
+    
+    // HTML 태그 제거
+    cleaned = cleaned.replace(/<[^>]*>/g, '');
+    
+    return cleaned;
+} 
