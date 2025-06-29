@@ -1,9 +1,31 @@
+// 나이스 API 키 (하드코딩)
+const API_KEY = '2a740c867dd448ba9496d2c88f525e61';
+
+// 교육청 이름을 코드로 변환하는 매핑
+const OFFICE_CODE_MAP = {
+    '강원특별자치도교육청': 'K10',
+    '서울특별시교육청': 'B10',
+    '부산광역시교육청': 'C10',
+    '대구광역시교육청': 'D10',
+    '인천광역시교육청': 'E10',
+    '광주광역시교육청': 'F10',
+    '대전광역시교육청': 'G10',
+    '울산광역시교육청': 'H10',
+    '세종특별자치시교육청': 'I10',
+    '경기도교육청': 'J10',
+    '충청북도교육청': 'K10',
+    '충청남도교육청': 'M10',
+    '전라북도교육청': 'N10',
+    '전라남도교육청': 'O10',
+    '경상북도교육청': 'P10',
+    '경상남도교육청': 'Q10',
+    '제주특별자치도교육청': 'R10'
+};
+
 // DOM 요소들
-const apiKeyInput = document.getElementById('apiKey');
 const officeCodeInput = document.getElementById('officeCode');
 const schoolCodeInput = document.getElementById('schoolCode');
 const mealDateInput = document.getElementById('mealDate');
-const saveApiKeyBtn = document.getElementById('saveApiKey');
 const searchMealBtn = document.getElementById('searchMeal');
 const todayMealBtn = document.getElementById('todayMeal');
 const loadingElement = document.getElementById('loading');
@@ -11,7 +33,6 @@ const mealContentElement = document.getElementById('mealContent');
 
 // 로컬스토리지 키
 const STORAGE_KEYS = {
-    API_KEY: 'gangwon_meal_api_key',
     OFFICE_CODE: 'gangwon_meal_office_code',
     SCHOOL_CODE: 'gangwon_meal_school_code'
 };
@@ -36,13 +57,8 @@ function setDefaultDate() {
 
 // 저장된 데이터 불러오기
 function loadSavedData() {
-    const savedApiKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
     const savedOfficeCode = localStorage.getItem(STORAGE_KEYS.OFFICE_CODE);
     const savedSchoolCode = localStorage.getItem(STORAGE_KEYS.SCHOOL_CODE);
-    
-    if (savedApiKey) {
-        apiKeyInput.value = savedApiKey;
-    }
     
     if (savedOfficeCode) {
         officeCodeInput.value = savedOfficeCode;
@@ -55,7 +71,6 @@ function loadSavedData() {
 
 // 이벤트 리스너 설정
 function setupEventListeners() {
-    saveApiKeyBtn.addEventListener('click', saveApiKey);
     searchMealBtn.addEventListener('click', searchMeal);
     todayMealBtn.addEventListener('click', searchTodayMeal);
     
@@ -63,12 +78,6 @@ function setupEventListeners() {
     schoolCodeInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             searchMeal();
-        }
-    });
-    
-    apiKeyInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            saveApiKey();
         }
     });
     
@@ -83,19 +92,48 @@ function setupEventListeners() {
             searchMeal();
         }
     });
-}
 
-// API 키 저장
-function saveApiKey() {
-    const apiKey = apiKeyInput.value.trim();
-    
-    if (!apiKey) {
-        showMessage('API 키를 입력해주세요.', 'error');
-        return;
-    }
-    
-    localStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
-    showMessage('API 키가 성공적으로 저장되었습니다!', 'success');
+    // 교육청 자동완성
+    const officeCodeList = document.getElementById('officeCodeList');
+    officeCodeInput.addEventListener('input', function() {
+        const value = officeCodeInput.value.trim();
+        if (value.length >= 1) {
+            officeCodeList.innerHTML = Object.keys(OFFICE_CODE_MAP)
+                .filter(name => name.includes(value))
+                .map(name => `<option value="${name}">`)
+                .join('');
+        }
+    });
+
+    // 학교 자동완성
+    const schoolCodeList = document.getElementById('schoolCodeList');
+    schoolCodeInput.addEventListener('input', async function() {
+        const officeName = officeCodeInput.value.trim();
+        const officeCode = getOfficeCode(officeName);
+        const value = schoolCodeInput.value.trim();
+        if (officeCode && value.length >= 2) {
+            const apiUrl = `https://open.neis.go.kr/hub/schoolInfo`;
+            const params = new URLSearchParams({
+                KEY: API_KEY,
+                Type: 'json',
+                ATPT_OFCDC_SC_CODE: officeCode,
+                SCHUL_NM: value
+            });
+            try {
+                const response = await fetch(`${apiUrl}?${params}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.schoolInfo && data.schoolInfo[1] && data.schoolInfo[1].row) {
+                        schoolCodeList.innerHTML = data.schoolInfo[1].row
+                            .map(s => `<option value="${s.SCHUL_NM}">`)
+                            .join('');
+                    }
+                }
+            } catch (e) {
+                // 무시
+            }
+        }
+    });
 }
 
 // 오늘 급식 조회
@@ -106,23 +144,24 @@ function searchTodayMeal() {
 
 // 급식 정보 검색
 async function searchMeal() {
-    const apiKey = apiKeyInput.value.trim();
-    const officeCode = officeCodeInput.value.trim();
-    const schoolCode = schoolCodeInput.value.trim();
+    const officeName = officeCodeInput.value.trim();
+    const schoolName = schoolCodeInput.value.trim();
     const mealDate = mealDateInput.value;
     
-    if (!apiKey) {
-        showMessage('API 키를 입력해주세요.', 'error');
+    if (!officeName) {
+        showMessage('교육청을 입력해주세요.', 'error');
         return;
     }
     
+    // 교육청 이름을 코드로 변환
+    const officeCode = getOfficeCode(officeName);
     if (!officeCode) {
-        showMessage('교육청 코드를 입력해주세요.', 'error');
+        showMessage('올바른 교육청 이름을 입력해주세요. (예: 강원특별자치도교육청, 서울특별시교육청)', 'error');
         return;
     }
     
-    if (!schoolCode) {
-        showMessage('학교 번호를 입력해주세요.', 'error');
+    if (!schoolName) {
+        showMessage('학교를 입력해주세요.', 'error');
         return;
     }
     
@@ -131,13 +170,23 @@ async function searchMeal() {
         return;
     }
     
-    // 교육청 코드와 학교 번호 저장
-    localStorage.setItem(STORAGE_KEYS.OFFICE_CODE, officeCode);
-    localStorage.setItem(STORAGE_KEYS.SCHOOL_CODE, schoolCode);
-    
     showLoading(true);
     
     try {
+        // 학교 이름을 코드로 변환
+        let schoolCode = schoolName;
+        
+        // 입력된 값이 이미 숫자 코드인지 확인
+        if (!/^\d+$/.test(schoolName)) {
+            // 학교 이름으로 검색
+            schoolCode = await searchSchoolCode(schoolName, officeCode);
+            if (!schoolCode) {
+                showMessage(`'${schoolName}' 학교를 찾을 수 없습니다. 학교 이름을 확인해주세요.`, 'error');
+                showLoading(false);
+                return;
+            }
+        }
+        
         // 선택된 날짜를 YYYYMMDD 형식으로 변환
         const selectedDate = new Date(mealDate);
         const year = selectedDate.getFullYear();
@@ -149,9 +198,9 @@ async function searchMeal() {
         const apiUrl = `https://open.neis.go.kr/hub/mealServiceDietInfo`;
         
         const params = new URLSearchParams({
-            KEY: apiKey,
+            KEY: API_KEY,
             Type: 'json',
-            ATPT_OFCDC_SC_CODE: officeCode, // 사용자가 입력한 교육청 코드
+            ATPT_OFCDC_SC_CODE: officeCode, // 변환된 교육청 코드
             SD_SCHUL_CODE: schoolCode,
             MLSV_YMD: dateStr
         });
@@ -173,7 +222,7 @@ async function searchMeal() {
             const mealData = data.mealServiceDietInfo[1].row;
             showMealInfo(mealData, null);
         } else {
-            showMessage('급식 정보를 불러올 수 없습니다. API 키, 교육청 코드, 학교 번호를 확인해주세요.', 'error');
+            showMessage('급식 정보를 불러올 수 없습니다. 교육청, 학교를 확인해주세요.', 'error');
         }
         
     } catch (error) {
@@ -393,4 +442,49 @@ function cleanMenu(menuString) {
     cleaned = cleaned.replace(/<[^>]*>/g, '');
     
     return cleaned;
+}
+
+// 교육청 이름을 코드로 변환하는 함수
+function getOfficeCode(officeName) {
+    // 입력된 값이 이미 코드인 경우 (K10, B10 등)
+    if (officeName.length <= 3 && /^[A-Z]\d{2}$/.test(officeName)) {
+        return officeName;
+    }
+    
+    // 교육청 이름을 코드로 변환
+    return OFFICE_CODE_MAP[officeName] || null;
+}
+
+// 학교 이름으로 학교 코드를 검색하는 함수
+async function searchSchoolCode(schoolName, officeCode) {
+    try {
+        const apiUrl = `https://open.neis.go.kr/hub/schoolInfo`;
+        const params = new URLSearchParams({
+            KEY: API_KEY,
+            Type: 'json',
+            ATPT_OFCDC_SC_CODE: officeCode,
+            SCHUL_NM: schoolName
+        });
+        
+        const response = await fetch(`${apiUrl}?${params}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.RESULT && data.RESULT.CODE === 'INFO-200') {
+            return null; // 학교를 찾을 수 없음
+        } else if (data.schoolInfo && data.schoolInfo[1] && data.schoolInfo[1].row) {
+            const schools = data.schoolInfo[1].row;
+            // 첫 번째 학교의 코드를 반환
+            return schools[0].SD_SCHUL_CODE;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error searching school:', error);
+        return null;
+    }
 } 
